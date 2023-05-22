@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.interceptor.DefaultTransactionAttribute;
@@ -161,6 +162,18 @@ public class BasicTxTest {
                 .isInstanceOf(UnexpectedRollbackException.class);
     }
 
+    @Test
+    void inner_rollback_requires_new() {
+        log.info("외부 트랜잭션 시작");
+        TransactionStatus outer = txManager.getTransaction(new DefaultTransactionAttribute());
+        log.info("outer.isNewTransaction()={}", outer.isNewTransaction());
+
+        innerLogic();
+
+        log.info("외부 트랜잭션 커밋");
+        txManager.commit(outer);
+    }
+
     private void doubleTx() {
         log.info("트랜잭션1 시작");
         TransactionStatus status1 = txManager.getTransaction(new DefaultTransactionAttribute());
@@ -172,5 +185,18 @@ public class BasicTxTest {
         TransactionStatus status2 = txManager.getTransaction(new DefaultTransactionAttribute());
         log.info("트랜잭션2 오류(런타임에러)");
         throw new RuntimeException();
+    }
+
+    private void innerLogic() {
+        log.info("내부 트랜잭션 시작");
+        DefaultTransactionAttribute definition = new DefaultTransactionAttribute();
+        //디폴트는 REQUIRED, 기존 트랜잭션에 참가
+        //REQUIRES_NEW, 새로운 물리 트랜잭션을 만든다
+        definition.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        TransactionStatus inner = txManager.getTransaction(definition);
+        log.info("inner.isNewTransaction()={}", inner.isNewTransaction());
+
+        log.info("내부 트랜잭션 롤백");
+        txManager.rollback(inner);
     }
 }
